@@ -5,6 +5,7 @@ import torchaudio
 import pandas as pd
 import cv2
 import numpy as np
+import os # <-- Import os
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchaudio import transforms as T
@@ -16,14 +17,14 @@ class EmotionDataset(Dataset):
         self.df = df
         self.is_train = is_train
         
-        # Define image transformations
+        # Image transformations (no changes here)
         self.image_transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Resize((config.IMAGE_SIZE, config.IMAGE_SIZE), antialias=True),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
         
-        # Define audio transformations to create Mel spectrogram
+        # Audio transformations (no changes here)
         self.audio_transform = T.MelSpectrogram(
             sample_rate=config.SAMPLE_RATE,
             n_fft=config.N_FFT,
@@ -36,35 +37,33 @@ class EmotionDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        video_path = row['video_path']
+        # === MODIFICATION START ===
+        video_frame_dir = row['video_frame_dir'] # Get the directory path for frames
         audio_path = row['audio_path']
         emotion_label = config.EMOTION_MAP[row['emotion']]
 
         # --- Process Video Frame ---
-        cap = cv2.VideoCapture(video_path)
-        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        # Select the middle frame
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count // 2)
-        ret, frame = cap.read()
-        cap.release()
+        # List all frame files, sort them, and pick the middle one
+        frame_files = sorted(os.listdir(video_frame_dir))
+        middle_frame_path = os.path.join(video_frame_dir, frame_files[len(frame_files) // 2])
         
-        if not ret:
-            # Handle cases where frame reading fails
+        # Read the image frame using OpenCV
+        frame = cv2.imread(middle_frame_path)
+        if frame is None:
+            # Handle cases where image reading fails
             frame = np.zeros((config.IMAGE_SIZE, config.IMAGE_SIZE, 3), dtype=np.uint8)
-
+        
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image = self.image_transform(image)
+        # === MODIFICATION END ===
         
-        # --- Process Audio ---
+        # --- Process Audio (no changes here) ---
         waveform, sr = torchaudio.load(audio_path)
         if sr != config.SAMPLE_RATE:
             waveform = torchaudio.functional.resample(waveform, sr, config.SAMPLE_RATE)
 
-        # Create Mel spectrogram
         spectrogram = self.audio_transform(waveform)
-        # Pad or truncate spectrogram to a fixed size
         spectrogram = self.pad_or_truncate_spectrogram(spectrogram)
-        # Convert to dB scale
         spectrogram = T.AmplitudeToDB()(spectrogram)
         
         return image, spectrogram, torch.tensor(emotion_label, dtype=torch.long)
@@ -72,13 +71,9 @@ class EmotionDataset(Dataset):
     def pad_or_truncate_spectrogram(self, spec):
         target_len = config.AUDIO_TIME_STEPS
         current_len = spec.shape[2]
-        
         if current_len > target_len:
-            # Truncate
             spec = spec[:, :, :target_len]
         elif current_len < target_len:
-            # Pad
             padding = target_len - current_len
             spec = torch.nn.functional.pad(spec, (0, padding), 'constant')
-            
         return spec
