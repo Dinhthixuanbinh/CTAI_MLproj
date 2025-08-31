@@ -5,7 +5,7 @@ import torchaudio
 import pandas as pd
 import cv2
 import numpy as np
-import os # <-- Import os
+import os
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchaudio import transforms as T
@@ -13,8 +13,15 @@ from torchaudio import transforms as T
 from src import config
 
 class EmotionDataset(Dataset):
-    def __init__(self, df, is_train=True):
-        self.df = df
+    def __init__(self, df, is_train=True, prototype_phase=False):
+        # Filter the DataFrame based on the prototype_phase flag
+        if prototype_phase:
+            # Assumes 'intensity' column exists in the CSV
+            self.df = df[df['intensity'] == 'HI'].reset_index(drop=True)
+            print(f"Loading {len(self.df)} samples for prototype learning.")
+        else:
+            self.df = df
+            
         self.is_train = is_train
         
         # Image transformations (no changes here)
@@ -37,34 +44,27 @@ class EmotionDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-        # === MODIFICATION START ===
-        video_frame_dir = row['video_frame_dir'] # Get the directory path for frames
-        audio_path = row['audio_path']
-        emotion_label = config.EMOTION_MAP[row['emotion']]
-
-        # --- Process Video Frame ---
-        # List all frame files, sort them, and pick the middle one
+        
+        # Process Video Frame
+        video_frame_dir = row['video_frame_dir']
         frame_files = sorted(os.listdir(video_frame_dir))
         middle_frame_path = os.path.join(video_frame_dir, frame_files[len(frame_files) // 2])
-        
-        # Read the image frame using OpenCV
         frame = cv2.imread(middle_frame_path)
         if frame is None:
-            # Handle cases where image reading fails
             frame = np.zeros((config.IMAGE_SIZE, config.IMAGE_SIZE, 3), dtype=np.uint8)
-        
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image = self.image_transform(image)
-        # === MODIFICATION END ===
         
-        # --- Process Audio (no changes here) ---
+        # Process Audio
+        audio_path = row['audio_path']
         waveform, sr = torchaudio.load(audio_path)
         if sr != config.SAMPLE_RATE:
             waveform = torchaudio.functional.resample(waveform, sr, config.SAMPLE_RATE)
-
         spectrogram = self.audio_transform(waveform)
         spectrogram = self.pad_or_truncate_spectrogram(spectrogram)
         spectrogram = T.AmplitudeToDB()(spectrogram)
+        
+        emotion_label = config.EMOTION_MAP[row['emotion']]
         
         return image, spectrogram, torch.tensor(emotion_label, dtype=torch.long)
 
