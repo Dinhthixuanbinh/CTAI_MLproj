@@ -4,7 +4,7 @@ import os
 import pandas as pd
 from tqdm import tqdm
 
-def create_dataset_csv(base_dir='../cremad/'):
+def create_dataset_csv(base_dir='/kaggle/input/copy-crema-d/cremad'):
     """
     Scans the CREMA-D directory structure to create a CSV file with paths
     to audio files, corresponding video frame directories, and emotion labels.
@@ -37,7 +37,7 @@ def create_dataset_csv(base_dir='../cremad/'):
 
     # Create a DataFrame and save it to a CSV file
     df = pd.DataFrame(data)
-    save_path = os.path.join('../data/', 'cremad_paths.csv')
+    save_path = os.path.join('/kaggle/working/', 'cremad_paths.csv')
     df.to_csv(save_path, index=False)
     
     print(f"Successfully created CSV file with {len(df)} samples.")
