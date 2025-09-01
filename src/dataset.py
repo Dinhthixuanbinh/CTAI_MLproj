@@ -13,25 +13,20 @@ from torchaudio import transforms as T
 from src import config
 
 class EmotionDataset(Dataset):
-    def __init__(self, df, is_train=True, prototype_phase=False):
-        # Filter the DataFrame based on the prototype_phase flag
-        if prototype_phase:
-            # Assumes 'intensity' column exists in the CSV
-            self.df = df[df['intensity'] == 'HI'].reset_index(drop=True)
-            print(f"Loading {len(self.df)} samples for prototype learning.")
-        else:
-            self.df = df
-            
+    def __init__(self, df, is_train=True, prototype_phase=False, phase2_mode=False):
+        self.df = df
         self.is_train = is_train
-        
-        # Image transformations (no changes here)
+        self.prototype_phase = prototype_phase
+        self.phase2_mode = phase2_mode
+
+        # Image transformations
         self.image_transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Resize((config.IMAGE_SIZE, config.IMAGE_SIZE), antialias=True),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
-        
-        # Audio transformations (no changes here)
+
+        # Audio transformations
         self.audio_transform = T.MelSpectrogram(
             sample_rate=config.SAMPLE_RATE,
             n_fft=config.N_FFT,
@@ -45,16 +40,6 @@ class EmotionDataset(Dataset):
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
         
-        # Process Video Frame
-        video_frame_dir = row['video_frame_dir']
-        frame_files = sorted(os.listdir(video_frame_dir))
-        middle_frame_path = os.path.join(video_frame_dir, frame_files[len(frame_files) // 2])
-        frame = cv2.imread(middle_frame_path)
-        if frame is None:
-            frame = np.zeros((config.IMAGE_SIZE, config.IMAGE_SIZE, 3), dtype=np.uint8)
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image = self.image_transform(image)
-        
         # Process Audio
         audio_path = row['audio_path']
         waveform, sr = torchaudio.load(audio_path)
@@ -64,9 +49,34 @@ class EmotionDataset(Dataset):
         spectrogram = self.pad_or_truncate_spectrogram(spectrogram)
         spectrogram = T.AmplitudeToDB()(spectrogram)
         
+        # Process Video Frames based on the current phase
+        video_frame_dir = row['video_frame_dir']
+        frame_files = sorted(os.listdir(video_frame_dir))
+        
+        if self.phase2_mode:
+            # Phase 2: Load all frames
+            images = []
+            for frame_file in frame_files:
+                frame_path = os.path.join(video_frame_dir, frame_file)
+                frame = cv2.imread(frame_path)
+                if frame is None:
+                    frame = np.zeros((config.IMAGE_SIZE, config.IMAGE_SIZE, 3), dtype=np.uint8)
+                image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                images.append(self.image_transform(image))
+            images = torch.stack(images)
+        else:
+            # Phase 1: Load a random frame
+            selected_frame = np.random.choice(frame_files)
+            middle_frame_path = os.path.join(video_frame_dir, selected_frame)
+            frame = cv2.imread(middle_frame_path)
+            if frame is None:
+                frame = np.zeros((config.IMAGE_SIZE, config.IMAGE_SIZE, 3), dtype=np.uint8)
+            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            images = self.image_transform(image)
+        
         emotion_label = config.EMOTION_MAP[row['emotion']]
         
-        return image, spectrogram, torch.tensor(emotion_label, dtype=torch.long)
+        return images, spectrogram, torch.tensor(emotion_label, dtype=torch.long)
 
     def pad_or_truncate_spectrogram(self, spec):
         target_len = config.AUDIO_TIME_STEPS

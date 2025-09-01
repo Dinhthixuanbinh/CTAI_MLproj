@@ -26,17 +26,16 @@ def run_training():
     best_val_acc = 0.0
     
     # --- Phase 1: Class Prototype Learning ---
-    print(" Starting Phase 1: Class Prototype Learning...")
+    print("Starting Phase 1: Class Prototype Learning...")
     
     # Create dataset for prototype learning (HI intensity samples only)
-    prototype_train_dataset = EmotionDataset(train_df, is_train=True, prototype_phase=True)
+    prototype_train_dataset = EmotionDataset(train_df, is_train=True, prototype_phase=True, phase2_mode=False)
     prototype_train_loader = DataLoader(prototype_train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=4)
 
     # Freeze visual network parameters
     for param in model.visual_net.parameters():
         param.requires_grad = False
 
-    # Train for a subset of epochs
     for epoch in range(config.NUM_EPOCHS // 2):
         model.train()
         total_loss = 0
@@ -54,18 +53,18 @@ def run_training():
         print(f"Phase 1 - Epoch {epoch+1} | Train Loss: {total_loss/len(prototype_train_loader):.4f}")
 
     # --- Phase 2: Supervised Fine-Tuning with full dataset ---
-    print(" Starting Phase 2: Supervised Fine-Tuning with full dataset...")
+    print("Starting Phase 2: Supervised Fine-Tuning with full dataset...")
     
     # Unfreeze all model parameters
     for param in model.parameters():
         param.requires_grad = True
 
     # Re-initialize optimizer for all parameters
-    optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE / 10) # Use a smaller learning rate
+    optimizer = optim.Adam(model.parameters(), lr=config.LEARNING_RATE / 10) 
 
-    # Create datasets with the full data
-    full_train_dataset = EmotionDataset(train_df, is_train=True, prototype_phase=False)
-    val_dataset = EmotionDataset(val_df, is_train=False, prototype_phase=False)
+    # Create datasets with the full data, and set phase2_mode to True
+    full_train_dataset = EmotionDataset(train_df, is_train=True, prototype_phase=False, phase2_mode=True)
+    val_dataset = EmotionDataset(val_df, is_train=False, prototype_phase=False, phase2_mode=True)
     full_train_loader = DataLoader(full_train_dataset, batch_size=config.BATCH_SIZE, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False, num_workers=4)
 
@@ -90,6 +89,7 @@ def run_training():
         with torch.no_grad():
             for images, spectrograms, labels in tqdm(val_loader, desc=f"Phase 2 - Epoch {epoch+1} [Val]"):
                 images, spectrograms, labels = images.to(config.DEVICE), spectrograms.to(config.DEVICE), labels.to(config.DEVICE)
+                
                 outputs = model(images, spectrograms)
                 _, predicted = torch.max(outputs.data, 1)
                 total += labels.size(0)
@@ -102,7 +102,7 @@ def run_training():
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             torch.save(model.state_dict(), f"{config.MODEL_SAVE_PATH}/best_model.pth")
-            print(f" Best model saved with accuracy: {best_val_acc:.2f}%")
+            print(f"Best model saved with accuracy: {best_val_acc:.2f}%")
 
 if __name__ == '__main__':
     run_training()
