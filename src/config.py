@@ -3,10 +3,10 @@
 import torch
 
 # -- Project Paths --
-DATA_DIR = '/kaggle/input/copy-crema-d/cremad/'
+DATA_DIR = "/kaggle/input/copy-crema-d/cremad/"
 # UPDATE THIS LINE to use the new CSV file
-CSV_PATH = '/kaggle/working/cremad_paths.csv' 
-MODEL_SAVE_PATH = '/kaggle/working/'
+CSV_PATH = "/kaggle/working/cremad_paths.csv"
+MODEL_SAVE_PATH = "/kaggle/working/"
 
 # -- Model Hyperparameters --
 NUM_CLASSES = 6
@@ -26,7 +26,4 @@ AUDIO_TIME_STEPS = 384
 IMAGE_SIZE = 224
 
 # -- Emotion Mapping --
-EMOTION_MAP = {
-    "ANG": 0, "HAP": 1, "SAD": 2,
-    "NEU": 3, "FEA": 4, "DIS": 5
-}
+EMOTION_MAP = {"ANG": 0, "HAP": 1, "SAD": 2, "NEU": 3, "FEA": 4, "DIS": 5}
